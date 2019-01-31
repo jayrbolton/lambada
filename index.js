@@ -4,11 +4,21 @@ const h = require('snabbdom/h').default
 // General todos:
 // - JSON representation of the module, for saving and loading
 
+// The whole module iterates with a stop condition
+// step the whole module forward, backwards with arrow keys
+// Every value cell has a starting value and a step command (map), and a stop condition
+
 /*
  * Challenge question:
  *
  * If we list all the natural numbers below 10 that are multiples of 3 or 5, we get 3, 5, 6 and 9. The sum of these multiples is 23.
  * Find the sum of all the multiples of 3 or 5 below 1000.
+ *
+ * a; start=3; stop=a 1000 gte; step=a 3 add
+ * b; start=5; end=b 1000 gte; step=b 5 add
+ * c; start=15; end=c 1000 gte; step=c 15 add
+ * sum; a b add
+ * diff; sum c sub
  *
  * We will need some kind of iterator/range cell that:
  * - starts at 3 and goes up by 3 until 100
@@ -21,14 +31,23 @@ const h = require('snabbdom/h').default
  * 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, ...
  * By considering the terms in the Fibonacci sequence whose values do not exceed four million, find the sum of the even-valued terms.
  *
- *
- *  iterator
- *    stop-when = y >= 1000
- *  x = 0
- *    on-step = y
- *  y = 1
- *    on-step = x y add
+ *  x; start=0; step=y
+ *  limit; start=4000000
+ *  y; start=1; step=x y add; stop=y limit gte
+ *  evens; start=0; step=y (is_even) filter
+ *  sum-evens; start=0; accum=this evens add
 */
+
+/* Question 3:
+ * The prime factors of 13195 are 5, 7, 13 and 29.
+ * What is the largest prime factor of the number 600851475143 ?
+ *
+ * - Start with i=2, loop while less than N
+ * - check if i divides N
+ *   - if it does, then N = N/i, and add i to the set of factors
+ *   - otherwise, increment i
+ * - return the set of factors
+ */
 
 function Module () {
   return Component({
@@ -43,46 +62,125 @@ function Module () {
         console.error('Invalid name')
         return
       }
-      this.cells[name] = creator.apply(null, [this].concat(args))
+      this.cells[name] = Cell(this, name)
       this._render()
     },
     view () {
       return h('div', [
-        h('input', {
-          props: {
-            placeholder: 'New name',
-            value: this.newCellName,
-            type: 'text'
-          },
-          on: {
-            input: ev => {
-              this.newCellName = ev.currentTarget.value
+        h('div', [
+          h('label', 'Module name'),
+          h('input', {
+            props: {
+              type: 'text'
             }
-          }
-        }),
-        h('button', {
-          on: { click: () => this.createCell(Value, []) }
-        }, 'Add value'),
-        h('button', {
-          on: { click: () => this.createCell(Rel, []) }
-        }, 'Add relationship'),
-        h('button', {
-          on: { click: () => this.createCell(Accum, []) }
-        }, 'Add accumulator'),
-        h('button', {
-          on: { click: () => this.createCell(Range, []) }
-        }, 'Add range'),
+          })
+        ]),
+        // CPU stepper buttons
+        h('div', [
+          h('button', {
+            on: {
+              click: () => {
+                for (let name in this.cells) {
+                  const cell = this.cells[name]
+                  cell.reset()
+                }
+              }
+            }
+          }, [ 'Reset' ]),
+          h('button', {
+            on: {
+              click: () => {
+                for (let name in this.cells) {
+                  const cell = this.cells[name]
+                  cell.tick()
+                }
+              }
+            }
+          }, [ 'Step forward' ])
+        ]),
+        // New cell controls
+        h('div', [
+          h('input', {
+            props: {
+              placeholder: 'New name',
+              value: this.newCellName,
+              type: 'text'
+            },
+            on: {
+              input: ev => {
+                this.newCellName = ev.currentTarget.value
+              }
+            }
+          }),
+          h('button', {
+            on: { click: () => this.createCell() }
+          }, 'Add Cell')
+        ]),
         h('div', Object.entries(this.cells).map(([name, cell]) => {
-          return h('div', [
-            h('p', name),
-            cell.view()
-          ])
+          return h('div', [ cell.view() ])
         }))
       ])
     }
   })
 }
 
+function Cell (module, name) {
+  return Component({
+    name,
+    module,
+    val: null,
+    start: null,
+    ended: false,
+    pending: true, // no ticks yet
+    tick: function () {
+      if (this.ended) return
+      this.pending = false
+      if (this.end) {
+        if (this.end()) {
+          this.ended = true
+          this._render()
+          return
+        }
+      }
+      if (this.step) {
+        this.val = this.step()
+        this._render()
+      }
+    },
+    reset: function () {
+      this.val = this.start
+      this.ended = false
+      this.pending = true
+      this._render()
+    },
+    view: function () {
+      return h('div', [
+        h('p', ['Cell: ', this.name]),
+        h('div', [
+          h('input', {
+            props: {
+              type: 'text',
+              placeholder: 'Starting value'
+            },
+            on: {
+              input: ev => {
+                const val = ev.currentTarget.value.trim()
+                this.start = Number(val)
+                if (this.pending) {
+                  this.val = this.start
+                  this._render()
+                }
+              }
+            }
+          })
+        ]),
+        h('p', ['Value: ', this.val])
+      ])
+    }
+  })
+}
+
+/*
 function Value (module) {
   return Component({
     id: id++,
@@ -119,6 +217,13 @@ function Value (module) {
         })
       ])
     }
+  })
+}
+*/
+
+/*
+function Looper (module) {
+  return Component({
   })
 }
 
@@ -371,6 +476,7 @@ function Accum (module) {
     }
   })
 }
+*/
 
 document._module = Module()
 document.body.appendChild(document._module._render().elm)
